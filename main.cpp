@@ -22,11 +22,21 @@ OptixDeviceContext optixContext;
 /*! @{ the pipeline we're building */
 OptixPipeline               pipeline;
 OptixPipelineCompileOptions pipelineCompileOptions = {};
-OptixPipelineLinkOptions    pipelineLinkOptions = {};
+OptixPipelineLinkOptions    pipelineLinkOptions    = {};
 
 /*! @{ the module that contains out device programs */
-OptixModule                 module;
-OptixModuleCompileOptions   moduleCompileOptions = {};
+OptixModule               module;
+OptixModuleCompileOptions moduleCompileOptions = {};
+
+/*! vector of all our program(group)s, and the SBT built around
+    them */
+std::vector<OptixProgramGroup> raygenPGs;
+cuBuffer                       raygenRecordsBuffer;
+std::vector<OptixProgramGroup> missPGs;
+cuBuffer                       missRecordsBuffer;
+std::vector<OptixProgramGroup> hitgroupPGs;
+cuBuffer                       hitgroupRecordsBuffer;
+OptixShaderBindingTable        sbt = {};
 
 void OptixInit() {
   // -------------------------------------------------------
@@ -65,38 +75,54 @@ void OptixCreateContext() {
   std::cout << "02 - Successfully created optix context" << std::endl;
 }
 
-//void OptixCreatePTXModule() {
-//  moduleCompileOptions.maxRegisterCount  = 50;
-//  moduleCompileOptions.optLevel          = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-//  moduleCompileOptions.debugLevel        = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
-//
-//  pipelineCompileOptions = {};
-//  pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-//  pipelineCompileOptions.usesMotionBlur     = false;
-//  pipelineCompileOptions.numPayloadValues   = 2;
-//  pipelineCompileOptions.numAttributeValues = 2;
-//  pipelineCompileOptions.exceptionFlags     = OPTIX_EXCEPTION_FLAG_NONE;
-//  pipelineCompileOptions.pipelineLaunchParamsVariableName = "optixLaunchParams";
-//
-//  pipelineLinkOptions.maxTraceDepth          = 2;
-//
-//  const std::string ptxCode = embedded_ptx_code;
-//
-//  char log[2048];
-//  size_t sizeof_log = sizeof( log );
-//  OPTIX_CHECK(optixModuleCreateFromPTX(optixContext,
-//      &moduleCompileOptions,
-//      &pipelineCompileOptions,
-//      ptxCode.c_str(),
-//      ptxCode.size(),
-//      log,&sizeof_log,
-//      &module
-//      ));
-//}
+void OptixCreatePTXModule() {
+  moduleCompileOptions.maxRegisterCount = 50;
+  moduleCompileOptions.optLevel         = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+  moduleCompileOptions.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+
+  pipelineCompileOptions                                  = {};
+  pipelineCompileOptions.traversableGraphFlags            = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+  pipelineCompileOptions.usesMotionBlur                   = false;
+  pipelineCompileOptions.numPayloadValues                 = 2;
+  pipelineCompileOptions.numAttributeValues               = 2;
+  pipelineCompileOptions.exceptionFlags                   = OPTIX_EXCEPTION_FLAG_NONE;
+  pipelineCompileOptions.pipelineLaunchParamsVariableName = "optixLaunchParams";
+
+  pipelineLinkOptions.maxTraceDepth = 2;
+
+  const std::string ptxCode = embedded_ptx_code;
+
+  char   log[2048];
+  size_t sizeof_log = sizeof( log );
+  OPTIX_CHECK( optixModuleCreateFromPTX( optixContext, &moduleCompileOptions, &pipelineCompileOptions, ptxCode.c_str(),
+      ptxCode.size(), log, &sizeof_log, &module ) );
+
+  std::cout << "03 - Successfully created PTX module" << std::endl;
+}
+
+void OptixCreateRaygenPrograms() {
+  // we do a single ray gen program in this example:
+  raygenPGs.resize( 1 );
+
+  OptixProgramGroupOptions pgOptions = {};
+  OptixProgramGroupDesc    pgDesc    = {};
+  pgDesc.kind                        = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+  pgDesc.raygen.module               = module;
+  pgDesc.raygen.entryFunctionName    = "__raygen__renderFrame";
+
+  // OptixProgramGroup raypg;
+  char   log[2048];
+  size_t sizeof_log = sizeof( log );
+  OPTIX_CHECK( optixProgramGroupCreate( optixContext, &pgDesc, 1, &pgOptions, log, &sizeof_log, &raygenPGs[0] ) );
+
+  std::cout << "04 - Successfully created raygen programs" << std::endl;
+}
 
 int main() {
   OptixInit();
   OptixCreateContext();
+  OptixCreatePTXModule();
+  OptixCreateRaygenPrograms();
 
   return 0;
 }

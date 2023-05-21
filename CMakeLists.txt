@@ -28,5 +28,6 @@ cuda_compile_and_embed(embedded_ptx_code devicePrograms.cu)
 add_executable(${PROJECT_NAME}
         ${embedded_ptx_code}
         launchParams.h
+        common/cudaMathHelper.h
         main.cpp)
 target_link_libraries(${PROJECT_NAME} ${LIBS})
