@@ -4,6 +4,7 @@ project(optfs)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+# Find CUDA
 find_package(CUDA REQUIRED)
 include_directories("${CUDA_INCLUDE_DIRS}")
 
@@ -11,9 +12,12 @@ include_directories("${CUDA_INCLUDE_DIRS}")
 find_package(OptiX REQUIRED)
 include_directories(${OptiX_INCLUDE})
 
+# Find OpenGL and Glfw
+find_package(OpenGL REQUIRED)
+find_package(glfw3 REQUIRED)
+
 # Include optix macros
 include(${CMAKE_MODULE_PATH}/configure_optix.cmake)
-cuda_compile_and_embed(embedded_ptx_code devicePrograms.cu)
 
 # Include common
 include_directories(common)
@@ -30,4 +34,7 @@ add_executable(${PROJECT_NAME}
         launchParams.h
         common/cudaMathHelper.h
         main.cpp)
-target_link_libraries(${PROJECT_NAME} ${LIBS})
+target_link_libraries(${PROJECT_NAME}
+    ${LIBS}
+    ${OPENGL_LIBRARIES}
+    glfw)

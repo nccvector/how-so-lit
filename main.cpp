@@ -3,6 +3,10 @@
 // Date: 23/05/20
 //
 
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <GL/gl.h>
+
 #include "cuBuffer.h"
 #include "optix_function_table_definition.h"
 
@@ -297,6 +301,10 @@ void render() {
 
 cuBuffer colorBuffer;
 
+int2                  fbSize = make_int2( 0, 0 );
+std::vector<uint32_t> pixels;
+GLuint                fbTexture { 0 };
+
 void resize( const int2& newSize ) {
   // if window minimized
   if ( newSize.x == 0 | newSize.y == 0 ) {
@@ -310,12 +318,66 @@ void resize( const int2& newSize ) {
   // launch:
   launchParams.fbSize      = newSize;
   launchParams.colorBuffer = (uint32_t*) colorBuffer.d_ptr;
+
+  // RESIZING GLFW VARS
+  fbSize = newSize;
+  pixels.resize(newSize.x*newSize.y);
+}
+
+void downloadPixels( uint32_t h_pixels[] ) {
+  colorBuffer.copy_from_device( h_pixels, launchParams.fbSize.x * launchParams.fbSize.y );
+}
+
+void draw() {
+  downloadPixels( pixels.data() );
+  if ( fbTexture == 0 ) {
+    glGenTextures( 1, &fbTexture );
+  }
+
+  glBindTexture( GL_TEXTURE_2D, fbTexture );
+  GLenum texFormat = GL_RGBA;
+  GLenum texelType = GL_UNSIGNED_BYTE;
+  glTexImage2D( GL_TEXTURE_2D, 0, texFormat, fbSize.x, fbSize.y, 0, GL_RGBA, texelType, pixels.data() );
+
+  glDisable( GL_LIGHTING );
+  glColor3f( 1, 1, 1 );
+
+  glMatrixMode( GL_MODELVIEW );
+  glLoadIdentity();
+
+  glEnable( GL_TEXTURE_2D );
+  glBindTexture( GL_TEXTURE_2D, fbTexture );
+  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+
+  glDisable( GL_DEPTH_TEST );
+
+  glViewport( 0, 0, fbSize.x, fbSize.y );
+
+  glMatrixMode( GL_PROJECTION );
+  glLoadIdentity();
+  glOrtho( 0.f, (float) fbSize.x, 0.f, (float) fbSize.y, -1.f, 1.f );
+
+  glBegin( GL_QUADS );
+  {
+    glTexCoord2f( 0.f, 0.f );
+    glVertex3f( 0.f, 0.f, 0.f );
+
+    glTexCoord2f( 0.f, 1.f );
+    glVertex3f( 0.f, (float) fbSize.y, 0.f );
+
+    glTexCoord2f( 1.f, 1.f );
+    glVertex3f( (float) fbSize.x, (float) fbSize.y, 0.f );
+
+    glTexCoord2f( 1.f, 0.f );
+    glVertex3f( (float) fbSize.x, 0.f, 0.f );
+  }
+  glEnd();
 }
 
 int main() {
-
-  // Allocate launchParams
-  resize( make_int2( 800, 600 ) );
+  int width = 800;
+  int height = 600;
 
   OptixInit();
   OptixCreateContext();
@@ -329,7 +391,38 @@ int main() {
   // Initialize launchParamsBuffer
   launchParamsBuffer.alloc( sizeof( launchParams ) );
 
-  render();
+  // Initialize GLFW
+  GLFWwindow* handle { nullptr };
+  // glfwInitHint(GLFW_COCOA_MENUBAR, GLFW_FALSE);
+
+  if ( !glfwInit() ) {
+    exit( EXIT_FAILURE );
+  }
+
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 2 );
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 0 );
+  glfwWindowHint( GLFW_VISIBLE, GLFW_TRUE );
+
+  handle = glfwCreateWindow( width, height, "Venom optix demo", NULL, NULL );
+  if ( !handle ) {
+    glfwTerminate();
+    exit( EXIT_FAILURE );
+  }
+
+  glfwMakeContextCurrent( handle );
+  glfwSwapInterval( 1 );
+
+  // GLFW render loop
+  glfwGetFramebufferSize( handle, &width, &height );
+  resize( make_int2( width, height ) );
+
+  while ( !glfwWindowShouldClose( handle ) ) {
+    render();
+    draw();
+
+    glfwSwapBuffers( handle );
+    glfwPollEvents();
+  }
 
   return 0;
 }
